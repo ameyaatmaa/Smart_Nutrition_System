@@ -1,18 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FiUser, FiEdit3, FiSave, FiX, FiActivity, FiTarget, FiTrendingUp } from 'react-icons/fi';
+import { FiUser, FiEdit3, FiSave, FiX, FiActivity, FiTarget, FiTrendingUp, FiCpu, FiRefreshCw } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateBMI, getBMICategory, calculateBMR, calculateTDEE, calculateMacros } from '../utils/nutritionCalculations';
 import { generateNutritionSuggestions } from '../utils/nutritionSuggestions';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import InputField from '../components/InputField';
+// Import the AI service
+import aiDietService from '../services/aiDietService';
 
 const Dashboard = ({ showToast }) => {
   const { user, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [loading, setLoading] = useState(false);
+  
+  // NEW STATE VARIABLES FOR AI INTEGRATION
+  const [aiDietPlan, setAiDietPlan] = useState(null);
+  const [loadingDietPlan, setLoadingDietPlan] = useState(false);
 
   const bmi = calculateBMI(user.weight, user.height);
   const bmiCategory = getBMICategory(bmi);
@@ -20,7 +26,7 @@ const Dashboard = ({ showToast }) => {
   const tdee = calculateTDEE(bmr, user.activityLevel);
   const macros = calculateMacros(tdee, 'maintain');
   
-  // Generate AI nutrition suggestions
+  // Generate AI nutrition suggestions (keep your existing logic)
   const nutritionData = generateNutritionSuggestions({
     ...user,
     bmi,
@@ -34,8 +40,27 @@ const Dashboard = ({ showToast }) => {
       weight: user.weight,
       height: user.height,
       activityLevel: user.activityLevel,
+      // ADD NEW HEALTH FIELDS
+      bloodPressure: user.bloodPressure || 120,
+      bloodSugar: user.bloodSugar || 100,
+      nutritionQuality: user.nutritionQuality || 7
     });
   }, [user]);
+
+  // NEW FUNCTION TO GENERATE AI DIET PLAN
+  const generateAIDietPlan = async () => {
+    setLoadingDietPlan(true);
+    try {
+      const dietPlan = await aiDietService.generateDietPlan(user);
+      setAiDietPlan(dietPlan);
+      showToast('AI Diet Plan generated successfully!', 'success');
+    } catch (error) {
+      showToast('Failed to generate diet plan. Please try again.', 'error');
+      console.error('Error generating diet plan:', error);
+    } finally {
+      setLoadingDietPlan(false);
+    }
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -43,6 +68,8 @@ const Dashboard = ({ showToast }) => {
       await updateUser(editData);
       setIsEditing(false);
       showToast('Profile updated successfully!', 'success');
+      // Clear AI diet plan to trigger regeneration with new data
+      setAiDietPlan(null);
     } catch (error) {
       showToast('Failed to update profile', 'error');
     } finally {
@@ -57,6 +84,10 @@ const Dashboard = ({ showToast }) => {
       weight: user.weight,
       height: user.height,
       activityLevel: user.activityLevel,
+      // Reset new fields too
+      bloodPressure: user.bloodPressure || 120,
+      bloodSugar: user.bloodSugar || 100,
+      nutritionQuality: user.nutritionQuality || 7
     });
     setIsEditing(false);
   };
@@ -140,6 +171,39 @@ const Dashboard = ({ showToast }) => {
                   value={editData.height}
                   onChange={handleChange}
                 />
+                {/* NEW INPUT FIELDS FOR AI INTEGRATION */}
+                <InputField
+                  label="Blood Pressure (systolic)"
+                  type="number"
+                  name="bloodPressure"
+                  value={editData.bloodPressure}
+                  onChange={handleChange}
+                />
+                <InputField
+                  label="Blood Sugar Level (mg/dL)"
+                  type="number"
+                  name="bloodSugar"
+                  value={editData.bloodSugar}
+                  onChange={handleChange}
+                />
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-white mb-2">
+                    Nutrition Quality (1-10): {editData.nutritionQuality}
+                  </label>
+                  <input
+                    type="range"
+                    name="nutritionQuality"
+                    min="1"
+                    max="10"
+                    value={editData.nutritionQuality}
+                    onChange={handleChange}
+                    className="w-full h-2 bg-dark-700 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-white/50 mt-1">
+                    <span>Poor (1)</span>
+                    <span>Excellent (10)</span>
+                  </div>
+                </div>
                 <div className="md:col-span-2 flex space-x-4">
                   <Button onClick={handleSave} loading={loading} className="flex-1">
                     <FiSave className="mr-2" />
@@ -170,9 +234,11 @@ const Dashboard = ({ showToast }) => {
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Activity Level</h3>
+                  <h3 className="text-lg font-semibold text-white mb-2">Health Metrics</h3>
                   <div className="space-y-2 text-white/70">
-                    <p className="capitalize">{user.activityLevel}</p>
+                    <p><span className="text-white">Blood Pressure:</span> {user.bloodPressure || 120} mmHg</p>
+                    <p><span className="text-white">Blood Sugar:</span> {user.bloodSugar || 100} mg/dL</p>
+                    <p><span className="text-white">Nutrition Quality:</span> {user.nutritionQuality || 7}/10</p>
                   </div>
                 </div>
               </div>
@@ -246,79 +312,128 @@ const Dashboard = ({ showToast }) => {
           </div>
         </motion.div>
 
-        {/* AI Nutrition Suggestions */}
+        {/* REPLACED AI NUTRITION SUGGESTIONS SECTION WITH AI DIET PLAN */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           className="mb-8"
         >
-          <h2 className="text-4xl font-black text-white mb-8">
-            <span className="gradient-text">AI-Powered</span> Nutrition Intelligence
-          </h2>
-          
-          {/* Meal Plan */}
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
-            <Card>
-              <h3 className="text-xl font-semibold text-white mb-4">Your Daily Meal Plan</h3>
-              <div className="space-y-4">
-                {Object.entries(nutritionData.mealPlan).map(([meal, data]) => (
-                  <div key={meal} className="p-4 bg-dark-800 rounded-lg">
-                    <h4 className="text-lg font-medium text-white capitalize mb-2">{meal}</h4>
-                    <p className="text-accent-purple font-semibold mb-2">{data.calories} calories</p>
-                    <div className="space-y-1">
-                      {data.foods.map((food, index) => (
-                        <div key={index} className="flex justify-between text-sm">
-                          <span className="text-white/70">{food.name}</span>
-                          <span className="text-white">{food.calories} cal</span>
+          <Card>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-4">
+                <div className="w-16 h-16 bg-gradient-to-r from-accent-purple to-accent-pink rounded-full flex items-center justify-center">
+                  <FiCpu className="text-white" size={24} />
+                </div>
+                <div>
+                  <h2 className="text-4xl font-black text-white">
+                    <span className="gradient-text">AI-Powered</span> Diet Plan
+                  </h2>
+                  <p className="text-white/70">Personalized recommendations based on your health profile</p>
+                </div>
+              </div>
+              <Button
+                onClick={generateAIDietPlan}
+                loading={loadingDietPlan}
+                className="bg-gradient-to-r from-accent-purple to-accent-pink"
+              >
+                <FiRefreshCw className={`mr-2 ${loadingDietPlan ? 'animate-spin' : ''}`} />
+                {loadingDietPlan ? 'Generating...' : 'Generate Plan'}
+              </Button>
+            </div>
+
+            {aiDietPlan ? (
+              <div>
+                {/* Daily Summary */}
+                <div className="grid md:grid-cols-3 gap-4 mb-6">
+                  <div className="p-4 bg-dark-800 rounded-lg">
+                    <h3 className="text-white font-semibold mb-2">Total Calories</h3>
+                    <p className="text-2xl font-bold gradient-text">{aiDietPlan.daily_summary.total_calories}</p>
+                  </div>
+                  <div className="p-4 bg-dark-800 rounded-lg">
+                    <h3 className="text-white font-semibold mb-2">BMI Status</h3>
+                    <p className="text-lg text-accent-emerald">{aiDietPlan.user_profile.bmi_category}</p>
+                    <p className="text-sm text-white/60">BMI: {aiDietPlan.user_profile.bmi}</p>
+                  </div>
+                  <div className="p-4 bg-dark-800 rounded-lg">
+                    <h3 className="text-white font-semibold mb-2">Meals Planned</h3>
+                    <p className="text-2xl font-bold gradient-text">{aiDietPlan.daily_summary.meals_count}</p>
+                  </div>
+                </div>
+
+                {/* Meal Plan */}
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  {Object.entries(aiDietPlan.diet_plan).map(([mealType, mealData]) => (
+                    <div key={mealType} className="p-4 bg-dark-800 rounded-lg">
+                      <h3 className="text-xl font-semibold text-white mb-3 capitalize">{mealType}</h3>
+                      <p className="text-accent-purple font-semibold mb-3">{mealData.total_calories} calories</p>
+                      
+                      <div className="space-y-2 mb-4">
+                        {mealData.foods.map((food, index) => (
+                          <div key={index} className="flex justify-between items-center">
+                            <span className="text-white/80">{food.food_name}</span>
+                            <div className="text-right">
+                              <span className="text-white text-sm">{food.energy_kcal} cal</span>
+                              <div className={`text-xs ${
+                                food.compatibility_score >= 80 ? 'text-green-400' : 
+                                food.compatibility_score >= 60 ? 'text-yellow-400' : 'text-red-400'
+                              }`}>
+                                {food.compatibility_score.toFixed(1)}% match
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="pt-3 border-t border-dark-600">
+                        <p className="text-xs text-accent-cyan">
+                          Avg Compatibility: {mealData.avg_compatibility.toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Health Recommendations */}
+                {aiDietPlan.health_recommendations && aiDietPlan.health_recommendations.length > 0 && (
+                  <div>
+                    <h3 className="text-xl font-semibold text-white mb-4">Health Recommendations</h3>
+                    <div className="space-y-3">
+                      {aiDietPlan.health_recommendations.map((rec, index) => (
+                        <div key={index} className={`p-4 rounded-lg border ${
+                          rec.priority === 'high' ? 'bg-red-500/10 border-red-500/30' :
+                          rec.priority === 'medium' ? 'bg-yellow-500/10 border-yellow-500/30' :
+                          'bg-green-500/10 border-green-500/30'
+                        }`}>
+                          <h4 className="text-white font-semibold mb-1">{rec.title}</h4>
+                          <p className="text-white/70 text-sm">{rec.message}</p>
+                          <span className={`inline-block mt-2 px-2 py-1 rounded text-xs ${
+                            rec.priority === 'high' ? 'bg-red-500/20 text-red-300' :
+                            rec.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
+                            'bg-green-500/20 text-green-300'
+                          }`}>
+                            {rec.priority} priority
+                          </span>
                         </div>
                       ))}
                     </div>
-                    <div className="mt-3 pt-3 border-t border-dark-600">
-                      <p className="text-xs text-accent-cyan font-medium">Tips:</p>
-                      <ul className="text-xs text-white/60 mt-1">
-                        {data.tips.map((tip, index) => (
-                          <li key={index}>• {tip}</li>
-                        ))}
-                      </ul>
-                    </div>
                   </div>
-                ))}
+                )}
               </div>
-            </Card>
-
-            {/* Recommendations */}
-            <Card>
-              <h3 className="text-xl font-semibold text-white mb-4">Personalized Recommendations</h3>
-              <div className="space-y-4">
-                {nutritionData.recommendations.map((rec, index) => (
-                  <div key={index} className="p-4 bg-dark-800 rounded-lg">
-                    <h4 className="text-lg font-medium text-white mb-2">{rec.title}</h4>
-                    <ul className="space-y-1">
-                      {rec.suggestions.map((suggestion, idx) => (
-                        <li key={idx} className="text-sm text-white/70 flex items-start">
-                          <span className="text-accent-purple mr-2">•</span>
-                          {suggestion}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+            ) : (
+              <div className="text-center py-8">
+                <FiCpu className="mx-auto text-white/50 mb-4" size={48} />
+                <p className="text-white/70 mb-4">Generate a personalized diet plan based on your health profile</p>
+                <Button
+                  onClick={generateAIDietPlan}
+                  loading={loadingDietPlan}
+                  className="bg-gradient-to-r from-accent-purple to-accent-pink"
+                >
+                  <FiCpu className="mr-2" />
+                  Generate AI Diet Plan
+                </Button>
               </div>
-            </Card>
-          </div>
-
-          {/* Health Tips */}
-          <Card>
-            <h3 className="text-xl font-semibold text-white mb-4">Health Tips</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              {nutritionData.healthTips.map((tip, index) => (
-                <div key={index} className="flex items-start space-x-2">
-                  <span className="text-accent-emerald text-sm mt-1">✓</span>
-                  <span className="text-white/70 text-sm">{tip}</span>
-                </div>
-              ))}
-            </div>
+            )}
           </Card>
         </motion.div>
       </div>
@@ -326,4 +441,4 @@ const Dashboard = ({ showToast }) => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;
